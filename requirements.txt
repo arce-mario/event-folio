@@ -1,0 +1,31 @@
+# EventFolio - Photo Upload & FTP Transfer
+# Python 3.10+
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# File handling
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# Template engine
+jinja2==3.1.2
+
+# Configuration
+python-dotenv==1.0.0
+
+# Scheduler for retry jobs
+apscheduler==3.10.4
+
+# File type validation (optional, for MIME detection)
+python-magic-bin==0.4.14;sys_platform=="win32"
+python-magic==0.4.27;sys_platform!="win32"
+
+# HEIC support (optional)
+pillow-heif==0.13.1
+pillow==10.1.0
+
+# Testing (development)
+pytest==7.4.3
+httpx==0.25.2

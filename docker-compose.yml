@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  eventfolio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eventfolio
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent storage for uploads
+      - eventfolio_uploads:/var/app/uploads
+      # Optional: mount local uploads for development
+      # - ./uploads:/var/app/uploads
+    environment:
+      # FTP Configuration
+      - FTP_HOST=${FTP_HOST:-10.0.0.2}
+      - FTP_PORT=${FTP_PORT:-21}
+      - FTP_USER=${FTP_USER:-eventuploader}
+      - FTP_PASSWORD=${FTP_PASSWORD}
+      - FTP_REMOTE_DIR=${FTP_REMOTE_DIR:-/srv/event_photos/incoming/}
+      - FTP_TIMEOUT=${FTP_TIMEOUT:-30}
+      
+      # Security
+      - UPLOAD_TOKEN=${UPLOAD_TOKEN}
+      
+      # Upload Limits
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-10}
+      - MAX_FILES_PER_REQUEST=${MAX_FILES_PER_REQUEST:-20}
+      
+      # Retry Configuration
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - RETRY_INTERVAL_MINUTES=${RETRY_INTERVAL_MINUTES:-5}
+      
+      # Server
+      - DEBUG=${DEBUG:-false}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - eventfolio_network
+    # If FTP server is on host network (VPN), you might need:
+    # extra_hosts:
+    #   - "ftp-server:10.0.0.2"
+
+volumes:
+  eventfolio_uploads:
+    driver: local
+
+networks:
+  eventfolio_network:
+    driver: bridge

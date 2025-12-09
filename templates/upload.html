@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memorias - Subir Fotos</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">📸</span>
+                <h1>EventFolio</h1>
+            </div>
+            <p class="subtitle">Comparte tus mejores momentos</p>
+        </header>
+
+        <!-- Event Info -->
+        <div class="event-info">
+            <div class="event-badge">
+                <span class="event-label">Evento</span>
+                <span class="event-name" id="eventName">{{ event_id }}</span>
+            </div>
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="upload-section">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <!-- Hidden fields -->
+                <input type="hidden" id="token" value="{{ token }}">
+                <input type="hidden" id="eventId" value="{{ event_id }}">
+                
+                <!-- Nombre de quien sube las fotos -->
+                <div class="form-group">
+                    <label for="uploaderName">Tu nombre</label>
+                    <input type="text" id="uploaderName" placeholder="ej: Ana López" 
+                           maxlength="100" required>
+                    <small>Para saber quién compartió estas fotos</small>
+                </div>
+
+                <!-- Drop Zone -->
+                <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                    <div class="drop-zone-content">
+                        <div class="drop-icon">📷</div>
+                        <p class="drop-text">Arrastra tus fotos aquí</p>
+                        <p class="drop-subtext">o haz clic para seleccionar</p>
+                        <input type="file" id="fileInput" name="files" multiple 
+                               accept=".jpg,.jpeg,.png,.heic,.heif" onclick="event.stopPropagation()">
+                    </div>
+                    <div class="drop-zone-active">
+                        <div class="drop-icon">⬇️</div>
+                        <p>Suelta las fotos aquí</p>
+                    </div>
+                </div>
+
+                <!-- File Limits Info -->
+                <div class="limits-info">
+                    <span>📁 Máx. {{ max_files }} archivos</span>
+                    <span>📏 Máx. {{ max_size_mb }} MB por archivo</span>
+                    <span>🖼️ {{ allowed_extensions }}</span>
+                </div>
+
+                <!-- Preview Grid -->
+                <div class="preview-section" id="previewSection" style="display: none;">
+                    <div class="preview-header">
+                        <h3>Fotos seleccionadas (<span id="fileCount">0</span>)</h3>
+                        <button type="button" class="btn-clear" id="clearBtn">Limpiar todo</button>
+                    </div>
+                    <div class="preview-grid" id="previewGrid"></div>
+                </div>
+
+                <!-- Upload Button -->
+                <button type="submit" class="btn-upload" id="uploadBtn" disabled>
+                    <span class="btn-text">Subir Fotos</span>
+                    <span class="btn-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Subiendo...
+                    </span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section" id="progressSection" style="display: none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">Preparando...</p>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-header" id="resultsHeader">
+                <!-- Dynamic content -->
+            </div>
+            <div class="results-list" id="resultsList">
+                <!-- Dynamic content -->
+            </div>
+            <button type="button" class="btn-new" id="newUploadBtn">
+                Subir más fotos
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>EventFolio v1.0 • Hosanna Carazo</p>
+        </footer>
+    </div>
+
+    <script src="/static/upload.js"></script>
+</body>
+</html>
