@@ -287,8 +287,9 @@ class TransferScheduler:
         self.queue.add_job(job)
         
         if immediate:
-            # Try immediate transfer in background
-            self._process_job(job)
+            # Try immediate transfer in a separate thread (non-blocking)
+            thread = threading.Thread(target=self._process_job, args=(job,), daemon=True)
+            thread.start()
         
         return job
     

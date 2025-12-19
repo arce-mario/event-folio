@@ -62,12 +62,15 @@ class Settings:
     @classmethod
     def get_event_dir(cls, event_id: str) -> Path:
         """Get the upload directory for a specific event."""
+        import os
         # Sanitize event_id to prevent path traversal
         safe_event_id = "".join(c for c in event_id if c.isalnum() or c in "-_")
         if not safe_event_id:
             safe_event_id = "default"
         event_dir = cls.LOCAL_UPLOAD_DIR / safe_event_id
         event_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure directory has write permissions for all users
+        os.chmod(event_dir, 0o777)
         return event_dir
 
 
