@@ -237,8 +237,16 @@ class TransferScheduler:
             self.queue.update_job(job)
             logger.info(f"Job {job.job_id} completed successfully")
             
-            # Optionally remove completed jobs after some time
-            # self.queue.remove_job(job.job_id)
+            # Delete local file after successful FTP transfer (if enabled)
+            if settings.DELETE_AFTER_FTP:
+                try:
+                    local_path.unlink()
+                    logger.info(f"Deleted local file after FTP success: {local_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete local file {local_path}: {e}")
+            
+            # Remove completed job from queue
+            self.queue.remove_job(job.job_id)
         else:
             job.status = JobStatus.FAILED
             job.retry_count += 1

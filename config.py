@@ -40,6 +40,9 @@ class Settings:
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
     RETRY_INTERVAL_MINUTES: int = int(os.getenv("RETRY_INTERVAL_MINUTES", "5"))
     
+    # Cleanup: delete local file after successful FTP transfer
+    DELETE_AFTER_FTP: bool = os.getenv("DELETE_AFTER_FTP", "true").lower() == "true"
+    
     # Server Configuration
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))

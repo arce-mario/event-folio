@@ -34,7 +34,9 @@ LABEL description="Photo upload service for events with FTP transfer"
 LABEL version="1.0.0"
 
 # Create non-root user for security
-RUN groupadd -r eventfolio && useradd -r -g eventfolio eventfolio
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd -g ${APP_GID} -r eventfolio && useradd -u ${APP_UID} -r -g eventfolio eventfolio
 
 WORKDIR /app
 

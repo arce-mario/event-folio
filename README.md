@@ -61,6 +61,7 @@ Variables importantes:
 - `FTP_USER` / `FTP_PASSWORD`: Credenciales FTP
 - `UPLOAD_TOKEN`: Token de seguridad para subidas
 - `LOCAL_UPLOAD_DIR`: Directorio temporal de subidas
+- `DELETE_AFTER_FTP`: Eliminar archivos locales tras transferencia FTP exitosa (`true`/`false`, default: `true`)
 
 ### 3. Ejecutar servidor
 
@@ -156,7 +157,10 @@ app/
 ### Construir imagen
 
 ```bash
-docker build -t eventfolio .
+docker build \
+  --build-arg APP_UID=$(id -u) \
+  --build-arg APP_GID=$(id -g) \
+  -t eventfolio .
 ```
 
 ### Ejecutar contenedor
@@ -166,6 +170,7 @@ docker run -d \
   --name eventfolio \
   -p 8000:8000 \
   -v $(pwd)/uploads:/var/app/uploads \
+  --user $(id -u):$(id -g) \
   -e FTP_HOST=10.0.0.2 \
   -e FTP_USER=eventuploader \
   -e FTP_PASSWORD=tu_password \
@@ -173,17 +178,24 @@ docker run -d \
   eventfolio
 ```
 
+Nota: si montas `./uploads` como volumen, debes asegurar permisos de escritura para el usuario dentro del contenedor. La forma recomendada es construir con `APP_UID/APP_GID` y ejecutar con `--user` como en los comandos anteriores.
+
 ### Docker Compose
 
 ```yaml
 version: '3.8'
 services:
   eventfolio:
-    build: .
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
     ports:
       - "8000:8000"
     volumes:
       - ./uploads:/var/app/uploads
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
       - FTP_HOST=10.0.0.2
       - FTP_USER=eventuploader
@@ -192,7 +204,7 @@ services:
     restart: unless-stopped
 ```
 
-## Configuración del Servidor FTP LINUX
+## Configuración del Servidor FTP
 
 El servidor FTP destino debe:
 
@@ -200,7 +212,7 @@ El servidor FTP destino debe:
 2. Tener un usuario con permisos de escritura
 3. Tener el directorio destino creado
 
-Ejemplo con vsftpd:
+### Linux (vsftpd)
 
 ```bash
 # En el servidor FTP
@@ -211,9 +223,10 @@ sudo mkdir -p /srv/event_photos/incoming
 sudo chown eventuploader:eventuploader /srv/event_photos/incoming
 ```
 
-# -------------------------------------------------------------------------
+### Windows (IIS FTP)
+
+```powershell
 # 1. Habilitar Características de Windows (IIS + FTP)
-# -------------------------------------------------------------------------
 # Habilita el rol base de servidor web y las herramientas de gestión
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-WebServerRole" -NoRestart
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-ManagementConsole" -All -NoRestart
@@ -222,9 +235,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName "IIS-ManagementConsole" -All 
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPServer" -NoRestart
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPSvc" -NoRestart
 
-# -------------------------------------------------------------------------
 # 2. Configuración de Usuario y Directorios
-# -------------------------------------------------------------------------
 # Crear usuario local 'eventuploader'
 # IMPORTANTE: Cambia "Event@2025_Secure!" por tu contraseña real
 $pass = ConvertTo-SecureString "Event@2025_Secure!" -AsPlainText -Force
@@ -238,9 +249,7 @@ New-Item -ItemType Directory -Path $path -Force
 # (OI)(CI)F = Object Inherit, Container Inherit, Full Control
 icacls $path /grant "eventuploader:(OI)(CI)F" /T
 
-# -------------------------------------------------------------------------
 # 3. Configuración del Sitio FTP en IIS
-# -------------------------------------------------------------------------
 Import-Module WebAdministration
 
 # Limpiar sitio por defecto para liberar el puerto 21 (Opcional, recomendado)
@@ -255,12 +264,10 @@ Set-WebConfigurationProperty -Filter /system.ftpServer/security/authentication/b
 # Autorizar al usuario 'eventuploader' para Lectura y Escritura
 Add-WebConfiguration -Filter /system.ftpServer/security/authorization -Value @{accessType="Allow"; users="eventuploader"; permissions="Read,Write"} -PSPath IIS:\ -Location "EventPhotosFTP"
 
-# -------------------------------------------------------------------------
 # 4. Configuración de Red
-# -------------------------------------------------------------------------
 # Abrir puerto 21 en el Firewall de Windows Defender
 New-NetFirewallRule -Name "FTP-Port-21" -DisplayName "FTP Server Port 21" -Protocol TCP -LocalPort 21 -Action Allow
-
+```
 
 ## Seguridad
 
