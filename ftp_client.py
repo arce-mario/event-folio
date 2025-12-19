@@ -5,6 +5,7 @@ Handles FTP connections and file transfers using Python's ftplib.
 
 import ftplib
 import logging
+import threading
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ from contextlib import contextmanager
 from config import settings
 
 logger = logging.getLogger("eventfolio.ftp")
+
+# Global lock to prevent concurrent FTP connections
+_ftp_lock = threading.Lock()
 
 
 @dataclass
@@ -247,6 +251,7 @@ ftp_client = FTPClient()
 def upload_to_ftp(local_path: Path, event_id: str) -> FTPTransferResult:
     """
     Convenience function to upload a file to FTP.
+    Uses a lock to prevent concurrent FTP connections.
     
     Args:
         local_path: Path to the local file
@@ -255,7 +260,8 @@ def upload_to_ftp(local_path: Path, event_id: str) -> FTPTransferResult:
     Returns:
         FTPTransferResult
     """
-    return ftp_client.upload_file(local_path, event_id)
+    with _ftp_lock:
+        return ftp_client.upload_file(local_path, event_id)
 
 
 def test_ftp_connection() -> Tuple[bool, str]:
