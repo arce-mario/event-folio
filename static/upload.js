@@ -326,13 +326,13 @@ function updateProgress(percent, stage = 'upload') {
     progressFill.style.width = percent + '%';
     
     if (stage === 'upload') {
-        progressText.textContent = `Enviando fotos... ${percent}%`;
+        progressText.textContent = `Subiendo... ${percent}%`;
     } else if (stage === 'processing') {
-        progressText.textContent = '⏳ Procesando y guardando en el servidor...';
+        progressText.textContent = 'Guardando fotos...';
         // Add pulsing animation to indicate ongoing work
         progressFill.style.animation = 'pulse 1.5s ease-in-out infinite';
     } else if (stage === 'complete') {
-        progressText.textContent = '✅ Completado';
+        progressText.textContent = '¡Listo!';
         progressFill.style.animation = 'none';
     }
 }
@@ -352,18 +352,18 @@ function showResults(response) {
     if (failed === 0 && uploaded > 0) {
         statusClass = 'success';
         icon = '✅';
-        title = '¡Fotos subidas!';
-        message = `${uploaded} foto${uploaded > 1 ? 's' : ''} subida${uploaded > 1 ? 's' : ''} correctamente`;
+        title = '¡Gracias!';
+        message = uploaded === 1 ? 'Tu foto fue recibida' : `Tus ${uploaded} fotos fueron recibidas`;
     } else if (uploaded === 0) {
         statusClass = 'error';
-        icon = '❌';
-        title = 'Error al subir';
-        message = 'No se pudo subir ninguna foto';
+        icon = '😕';
+        title = 'Algo salió mal';
+        message = 'No pudimos guardar las fotos. Intenta de nuevo.';
     } else {
         statusClass = 'partial';
         icon = '⚠️';
-        title = 'Subida parcial';
-        message = `${uploaded} de ${total} fotos subidas`;
+        title = 'Casi listo';
+        message = `Recibimos ${uploaded} de ${total} fotos`;
     }
     
     resultsHeader.className = `results-header ${statusClass}`;
@@ -384,7 +384,6 @@ function showResults(response) {
                 <span class="result-icon">✅</span>
                 <div class="result-info">
                     <div class="result-name">${escapeHtml(file.original_name)}</div>
-                    <div class="result-detail">${formatFileSize(file.size_bytes)} • ${file.saved_as}</div>
                 </div>
             `;
             resultsList.appendChild(item);
@@ -400,7 +399,7 @@ function showResults(response) {
                 <span class="result-icon">❌</span>
                 <div class="result-info">
                     <div class="result-name">${escapeHtml(error.filename)}</div>
-                    <div class="result-detail">${escapeHtml(error.error)}</div>
+                    <div class="result-detail">No se pudo guardar</div>
                 </div>
             `;
             resultsList.appendChild(item);
@@ -417,8 +416,8 @@ function showError(message) {
     
     resultsHeader.className = 'results-header error';
     resultsHeader.innerHTML = `
-        <h2>❌ Error</h2>
-        <p>${escapeHtml(message)}</p>
+        <h2>😕 Algo salió mal</h2>
+        <p>No pudimos guardar las fotos. Intenta de nuevo.</p>
     `;
     
     resultsList.innerHTML = '';

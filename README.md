@@ -178,7 +178,43 @@ docker run -d \
   eventfolio
 ```
 
-Nota: si montas `./uploads` como volumen, debes asegurar permisos de escritura para el usuario dentro del contenedor. La forma recomendada es construir con `APP_UID/APP_GID` y ejecutar con `--user` como en los comandos anteriores.
+**Nota sobre permisos**: Si montas `./uploads` como volumen, debes asegurar permisos de escritura para el usuario dentro del contenedor. La forma recomendada es construir con `APP_UID/APP_GID` y ejecutar con `--user` como en los comandos anteriores.
+
+### Ejecutar con OpenVPN (para acceso a red VPN)
+
+Si el servidor FTP está en una red VPN y OpenVPN corre en Docker:
+
+```bash
+# 1. Crear directorio uploads con permisos amplios
+mkdir -p uploads
+sudo chown -R 0:0 uploads
+sudo chmod -R 777 uploads
+
+# 2. Iniciar OpenVPN con puerto expuesto para EventFolio
+docker run -d \
+  --name openvpn \
+  --cap-add=NET_ADMIN \
+  --device=/dev/net/tun \
+  -p 1194:1194/udp \
+  -p 5110:8000 \
+  -v /ruta/a/openvpn-data:/etc/openvpn \
+  kylemanna/openvpn
+
+# 3. Iniciar EventFolio usando la red del contenedor OpenVPN
+docker run -d \
+  --name eventfolio \
+  --network container:openvpn \
+  -v $(pwd)/uploads:/var/app/uploads \
+  -e FTP_HOST=192.168.255.6 \
+  -e FTP_USER=eventuploader \
+  -e FTP_PASSWORD=tu_password \
+  -e UPLOAD_TOKEN=tu_token_seguro \
+  -e DELETE_AFTER_FTP=true \
+  -e PORT=8000 \
+  eventfolio
+```
+
+**Importante**: Con `--network container:openvpn`, EventFolio comparte la red del contenedor OpenVPN y puede acceder a clientes VPN. El puerto se expone en el contenedor OpenVPN (`-p 5110:8000`), no en EventFolio.
 
 ### Docker Compose
 
@@ -225,48 +261,125 @@ sudo chown eventuploader:eventuploader /srv/event_photos/incoming
 
 ### Windows (IIS FTP)
 
+Ejecuta todos los comandos en **PowerShell como Administrador**.
+
+#### Paso 1: Habilitar características de Windows
+
 ```powershell
-# 1. Habilitar Características de Windows (IIS + FTP)
-# Habilita el rol base de servidor web y las herramientas de gestión
+# Habilitar IIS y FTP Server
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-WebServerRole" -NoRestart
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-ManagementConsole" -All -NoRestart
-
-# Habilita específicamente el Servidor FTP y el Servicio FTP
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPServer" -NoRestart
 Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPSvc" -NoRestart
 
-# 2. Configuración de Usuario y Directorios
-# Crear usuario local 'eventuploader'
-# IMPORTANTE: Cambia "Event@2025_Secure!" por tu contraseña real
-$pass = ConvertTo-SecureString "Event@2025_Secure!" -AsPlainText -Force
-New-LocalUser -Name "eventuploader" -Password $pass -FullName "Event Uploader" -Description "Usuario para carga de eventos"
+# Reiniciar si es necesario
+Restart-Computer -Force
+```
 
-# Crear estructura de directorios
+#### Paso 2: Crear usuario y directorio
+
+```powershell
+# Crear usuario local (cambia la contraseña)
+$pass = ConvertTo-SecureString "TuPasswordSegura123" -AsPlainText -Force
+New-LocalUser -Name "eventuploader" -Password $pass -FullName "Event Uploader" -PasswordNeverExpires
+
+# Agregar al grupo Users
+Add-LocalGroupMember -Group "Users" -Member "eventuploader"
+
+# Crear directorio para fotos
 $path = "C:\srv\event_photos\incoming"
 New-Item -ItemType Directory -Path $path -Force
 
-# Asignar permisos ACL (Equivalente a chown)
-# (OI)(CI)F = Object Inherit, Container Inherit, Full Control
+# Asignar permisos completos al usuario
 icacls $path /grant "eventuploader:(OI)(CI)F" /T
+```
 
-# 3. Configuración del Sitio FTP en IIS
+#### Paso 3: Configurar sitio FTP en IIS
+
+```powershell
 Import-Module WebAdministration
 
-# Limpiar sitio por defecto para liberar el puerto 21 (Opcional, recomendado)
-if (Test-Path "IIS:\Sites\Default FTP Site") { Remove-WebSite -Name "Default FTP Site" }
+# Eliminar sitio FTP existente (si existe)
+Remove-WebSite -Name "EventPhotosFTP" -ErrorAction SilentlyContinue
 
-# Crear el nuevo sitio FTP apuntando a la carpeta creada
-New-WebFtpSite -Name "EventPhotosFTP" -Port 21 -PhysicalPath $path -Force
+# Crear nuevo sitio FTP
+New-WebFtpSite -Name "EventPhotosFTP" -Port 21 -PhysicalPath $path
 
-# Configurar Autenticación Básica (Usuario/Pass)
-Set-WebConfigurationProperty -Filter /system.ftpServer/security/authentication/basicAuthentication -Name enabled -Value $true -PSPath IIS:\ -Location "EventPhotosFTP"
+# Habilitar autenticación básica
+Set-ItemProperty "IIS:\Sites\EventPhotosFTP" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
 
-# Autorizar al usuario 'eventuploader' para Lectura y Escritura
-Add-WebConfiguration -Filter /system.ftpServer/security/authorization -Value @{accessType="Allow"; users="eventuploader"; permissions="Read,Write"} -PSPath IIS:\ -Location "EventPhotosFTP"
+# Configurar autorización (permissions=3 = Read+Write)
+Add-WebConfiguration "/system.ftpServer/security/authorization" -Value @{accessType="Allow"; users="eventuploader"; permissions=3} -PSPath IIS:\ -Location "EventPhotosFTP"
 
-# 4. Configuración de Red
-# Abrir puerto 21 en el Firewall de Windows Defender
-New-NetFirewallRule -Name "FTP-Port-21" -DisplayName "FTP Server Port 21" -Protocol TCP -LocalPort 21 -Action Allow
+# Deshabilitar SSL (para redes privadas/VPN)
+Set-ItemProperty "IIS:\Sites\EventPhotosFTP" -Name ftpServer.security.ssl.controlChannelPolicy -Value 0
+Set-ItemProperty "IIS:\Sites\EventPhotosFTP" -Name ftpServer.security.ssl.dataChannelPolicy -Value 0
+
+# Reiniciar servicio FTP
+Restart-Service ftpsvc
+```
+
+#### Paso 4: Configurar modo pasivo FTP
+
+El modo pasivo es necesario para transferencias a través de VPN/NAT:
+
+```powershell
+# Configurar rango de puertos pasivos (50000-50100)
+Set-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' -filter "system.ftpServer/firewallSupport" -name "lowDataChannelPort" -value 50000
+Set-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' -filter "system.ftpServer/firewallSupport" -name "highDataChannelPort" -value 50100
+
+# Configurar IP externa del servidor FTP (usa tu IP de VPN)
+Set-ItemProperty "IIS:\Sites\EventPhotosFTP" -Name ftpServer.firewallSupport.externalIp4Address -Value "192.168.255.6"
+
+# Reiniciar servicio FTP
+Restart-Service ftpsvc
+```
+
+#### Paso 5: Configurar Firewall
+
+```powershell
+# Permitir FTP puerto 21
+New-NetFirewallRule -DisplayName "FTP Server Port 21" -Direction Inbound -Protocol TCP -LocalPort 21 -Action Allow
+
+# Permitir puertos pasivos FTP
+New-NetFirewallRule -DisplayName "FTP Passive Ports" -Direction Inbound -Protocol TCP -LocalPort 50000-50100 -Action Allow
+
+# Permitir FTP desde subred VPN (ajusta la IP según tu red)
+New-NetFirewallRule -DisplayName "FTP from VPN" -Direction Inbound -Protocol TCP -LocalPort 21 -RemoteAddress 192.168.255.0/24 -Action Allow
+
+# Permitir ping desde VPN (opcional, para diagnóstico)
+New-NetFirewallRule -DisplayName "ICMP from VPN" -Direction Inbound -Protocol ICMPv4 -RemoteAddress 192.168.255.0/24 -Action Allow
+```
+
+#### Paso 6: Verificar configuración
+
+```powershell
+# Probar login FTP local
+ftp localhost
+# Usuario: eventuploader
+# Contraseña: TuPasswordSegura123
+
+# Verificar servicio FTP activo
+Get-Service ftpsvc
+
+# Ver sitios FTP configurados
+Get-WebSite | Where-Object { $_.Bindings -match "ftp" }
+```
+
+#### Solución de problemas
+
+Si el login falla con "530 User cannot log in":
+
+```powershell
+# Restablecer contraseña del usuario
+$pass = ConvertTo-SecureString "TuPasswordSegura123" -AsPlainText -Force
+Set-LocalUser -Name "eventuploader" -Password $pass
+
+# Verificar que el usuario existe
+Get-LocalUser -Name "eventuploader"
+
+# Reiniciar servicio FTP
+Restart-Service ftpsvc
 ```
 
 ## Seguridad
