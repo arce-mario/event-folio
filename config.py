@@ -43,6 +43,9 @@ class Settings:
     # Cleanup: delete local file after successful FTP transfer
     DELETE_AFTER_FTP: bool = os.getenv("DELETE_AFTER_FTP", "true").lower() == "true"
     
+    # Concurrency: max simultaneous upload requests being processed
+    MAX_CONCURRENT_UPLOADS: int = int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"))
+    
     # Server Configuration
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))

@@ -3,6 +3,7 @@ EventFolio - Main FastAPI Application
 Photo upload service with FTP transfer for events.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import List
@@ -47,13 +48,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Setup templates
 templates = Jinja2Templates(directory="templates")
 
+# Semaphore to limit concurrent uploads
+upload_semaphore: asyncio.Semaphore = None
+
 # Ensure upload directory exists on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup."""
+    global upload_semaphore
+    
     settings.ensure_directories()
     logger.info(f"EventFolio started. Upload dir: {settings.LOCAL_UPLOAD_DIR}")
     logger.info(f"FTP target: {settings.FTP_HOST}:{settings.FTP_PORT}")
+    
+    # Initialize upload semaphore
+    upload_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_UPLOADS)
+    logger.info(f"Max concurrent uploads: {settings.MAX_CONCURRENT_UPLOADS}")
     
     # Start the FTP transfer scheduler
     start_scheduler()
@@ -126,6 +136,7 @@ async def upload_photos(
     - **token**: Authentication token (required)
     
     Files are saved locally and queued for FTP transfer.
+    Uses a semaphore to limit concurrent uploads and prevent server overload.
     """
     
     # Validate token
@@ -133,95 +144,97 @@ async def upload_photos(
         logger.warning(f"Invalid token attempt from upload request")
         raise HTTPException(status_code=401, detail="Invalid or missing token")
     
-    # Validate file count
-    if len(files) > settings.MAX_FILES_PER_REQUEST:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many files. Maximum {settings.MAX_FILES_PER_REQUEST} files per request."
-        )
-    
-    if len(files) == 0:
-        raise HTTPException(status_code=400, detail="No files provided")
-    
-    # Sanitize event_id and get directory
-    safe_event_id = sanitize_event_id(event_id)
-    event_dir = settings.get_event_dir(safe_event_id)
-    
-    # Process each file
-    results = []
-    errors = []
-    
-    for upload_file in files:
-        original_name = upload_file.filename or "unknown"
-        
-        # Read file content
-        content = await upload_file.read()
-        
-        # Comprehensive validation (size, extension, MIME type)
-        validation = validate_file_content(content, original_name)
-        
-        if not validation.valid:
-            errors.append({
-                "filename": original_name,
-                "error": validation.error
-            })
-            continue
-        
-        # Generate safe filename (includes normalized uploader name) and save
-        safe_filename = generate_safe_filename(original_name, uploader_name)
-        destination = event_dir / safe_filename
-        
-        try:
-            with open(destination, "wb") as f:
-                f.write(content)
-            
-            logger.info(
-                f"Saved: {safe_filename} ({validation.file_size} bytes) "
-                f"[MIME: {validation.detected_mime}] by '{uploader_name}' to {event_dir}"
+    # Acquire semaphore to limit concurrent uploads
+    async with upload_semaphore:
+        # Validate file count
+        if len(files) > settings.MAX_FILES_PER_REQUEST:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many files. Maximum {settings.MAX_FILES_PER_REQUEST} files per request."
             )
+        
+        if len(files) == 0:
+            raise HTTPException(status_code=400, detail="No files provided")
+        
+        # Sanitize event_id and get directory
+        safe_event_id = sanitize_event_id(event_id)
+        event_dir = settings.get_event_dir(safe_event_id)
+        
+        # Process each file
+        results = []
+        errors = []
+        
+        for upload_file in files:
+            original_name = upload_file.filename or "unknown"
             
-            # Queue for FTP transfer
-            job = queue_ftp_transfer(
-                local_path=destination,
-                event_id=safe_event_id,
-                original_filename=original_name,
-                immediate=True  # Try to transfer immediately
-            )
+            # Read file content
+            content = await upload_file.read()
             
-            results.append({
-                "original_name": original_name,
-                "saved_as": safe_filename,
-                "size_bytes": validation.file_size,
-                "mime_type": validation.detected_mime,
-                "event_id": safe_event_id,
-                "uploader_name": uploader_name,
-                "path": str(destination),
-                "ftp_job_id": job.job_id,
-                "ftp_status": job.status
-            })
+            # Comprehensive validation (size, extension, MIME type)
+            validation = validate_file_content(content, original_name)
             
-        except Exception as e:
-            logger.error(f"Failed to save {original_name}: {e}")
-            errors.append({
-                "filename": original_name,
-                "error": f"Failed to save file: {str(e)}"
-            })
-    
-    # Build response
-    response = {
-        "success": len(results) > 0,
-        "uploaded": len(results),
-        "failed": len(errors),
-        "event_id": event_id,
-        "uploader_name": uploader_name,
-        "files": results
-    }
-    
-    if errors:
-        response["errors"] = errors
-    
-    status_code = 200 if len(results) > 0 else 400
-    return JSONResponse(content=response, status_code=status_code)
+            if not validation.valid:
+                errors.append({
+                    "filename": original_name,
+                    "error": validation.error
+                })
+                continue
+            
+            # Generate safe filename (includes normalized uploader name) and save
+            safe_filename = generate_safe_filename(original_name, uploader_name)
+            destination = event_dir / safe_filename
+            
+            try:
+                with open(destination, "wb") as f:
+                    f.write(content)
+                
+                logger.info(
+                    f"Saved: {safe_filename} ({validation.file_size} bytes) "
+                    f"[MIME: {validation.detected_mime}] by '{uploader_name}' to {event_dir}"
+                )
+                
+                # Queue for FTP transfer
+                job = queue_ftp_transfer(
+                    local_path=destination,
+                    event_id=safe_event_id,
+                    original_filename=original_name,
+                    immediate=True  # Try to transfer immediately
+                )
+                
+                results.append({
+                    "original_name": original_name,
+                    "saved_as": safe_filename,
+                    "size_bytes": validation.file_size,
+                    "mime_type": validation.detected_mime,
+                    "event_id": safe_event_id,
+                    "uploader_name": uploader_name,
+                    "path": str(destination),
+                    "ftp_job_id": job.job_id,
+                    "ftp_status": job.status
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to save {original_name}: {e}")
+                errors.append({
+                    "filename": original_name,
+                    "error": f"Failed to save file: {str(e)}"
+                })
+        
+        # Build response
+        response = {
+            "success": len(results) > 0,
+            "uploaded": len(results),
+            "failed": len(errors),
+            "event_id": event_id,
+            "uploader_name": uploader_name,
+            "files": results
+        }
+        
+        if errors:
+            response["errors"] = errors
+        
+        status_code = 200 if len(results) > 0 else 400
+        return JSONResponse(content=response, status_code=status_code)
 
 
 # =============================================================================

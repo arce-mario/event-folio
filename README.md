@@ -154,18 +154,20 @@ app/
 
 ## Docker
 
-### Construir imagen
+Hay dos formas de ejecutar EventFolio en Docker, dependiendo de tu configuración de red.
+
+### Opción A: Ejecución estándar (FTP accesible directamente)
+
+Usa esta opción si el servidor FTP es accesible desde el host sin VPN.
 
 ```bash
+# Construir imagen con UID/GID del usuario actual
 docker build \
   --build-arg APP_UID=$(id -u) \
   --build-arg APP_GID=$(id -g) \
   -t eventfolio .
-```
 
-### Ejecutar contenedor
-
-```bash
+# Ejecutar contenedor
 docker run -d \
   --name eventfolio \
   -p 8000:8000 \
@@ -178,13 +180,14 @@ docker run -d \
   eventfolio
 ```
 
-**Nota sobre permisos**: Si montas `./uploads` como volumen, debes asegurar permisos de escritura para el usuario dentro del contenedor. La forma recomendada es construir con `APP_UID/APP_GID` y ejecutar con `--user` como en los comandos anteriores.
+### Opción B: Ejecución con OpenVPN (FTP en red VPN)
 
-### Ejecutar con OpenVPN (para acceso a red VPN)
-
-Si el servidor FTP está en una red VPN y OpenVPN corre en Docker:
+Usa esta opción si el servidor FTP está en una red VPN y OpenVPN corre en Docker.
 
 ```bash
+# Construir imagen (sin build args, corre como root)
+docker build -t eventfolio .
+
 # 1. Crear directorio uploads con permisos amplios
 mkdir -p uploads
 sudo chown -R 0:0 uploads
@@ -214,7 +217,7 @@ docker run -d \
   eventfolio
 ```
 
-**Importante**: Con `--network container:openvpn`, EventFolio comparte la red del contenedor OpenVPN y puede acceder a clientes VPN. El puerto se expone en el contenedor OpenVPN (`-p 5110:8000`), no en EventFolio.
+**Nota**: Con `--network container:openvpn`, EventFolio comparte la red del contenedor OpenVPN y puede acceder a clientes VPN. El puerto se expone en OpenVPN (`-p 5110:8000`), no en EventFolio.
 
 ### Docker Compose
 
