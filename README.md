@@ -192,7 +192,7 @@ services:
     restart: unless-stopped
 ```
 
-## Configuración del Servidor FTP
+## Configuración del Servidor FTP LINUX
 
 El servidor FTP destino debe:
 
@@ -210,6 +210,57 @@ sudo passwd eventuploader
 sudo mkdir -p /srv/event_photos/incoming
 sudo chown eventuploader:eventuploader /srv/event_photos/incoming
 ```
+
+# -------------------------------------------------------------------------
+# 1. Habilitar Características de Windows (IIS + FTP)
+# -------------------------------------------------------------------------
+# Habilita el rol base de servidor web y las herramientas de gestión
+Enable-WindowsOptionalFeature -Online -FeatureName "IIS-WebServerRole" -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName "IIS-ManagementConsole" -All -NoRestart
+
+# Habilita específicamente el Servidor FTP y el Servicio FTP
+Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPServer" -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName "IIS-FTPSvc" -NoRestart
+
+# -------------------------------------------------------------------------
+# 2. Configuración de Usuario y Directorios
+# -------------------------------------------------------------------------
+# Crear usuario local 'eventuploader'
+# IMPORTANTE: Cambia "Event@2025_Secure!" por tu contraseña real
+$pass = ConvertTo-SecureString "Event@2025_Secure!" -AsPlainText -Force
+New-LocalUser -Name "eventuploader" -Password $pass -FullName "Event Uploader" -Description "Usuario para carga de eventos"
+
+# Crear estructura de directorios
+$path = "C:\srv\event_photos\incoming"
+New-Item -ItemType Directory -Path $path -Force
+
+# Asignar permisos ACL (Equivalente a chown)
+# (OI)(CI)F = Object Inherit, Container Inherit, Full Control
+icacls $path /grant "eventuploader:(OI)(CI)F" /T
+
+# -------------------------------------------------------------------------
+# 3. Configuración del Sitio FTP en IIS
+# -------------------------------------------------------------------------
+Import-Module WebAdministration
+
+# Limpiar sitio por defecto para liberar el puerto 21 (Opcional, recomendado)
+if (Test-Path "IIS:\Sites\Default FTP Site") { Remove-WebSite -Name "Default FTP Site" }
+
+# Crear el nuevo sitio FTP apuntando a la carpeta creada
+New-WebFtpSite -Name "EventPhotosFTP" -Port 21 -PhysicalPath $path -Force
+
+# Configurar Autenticación Básica (Usuario/Pass)
+Set-WebConfigurationProperty -Filter /system.ftpServer/security/authentication/basicAuthentication -Name enabled -Value $true -PSPath IIS:\ -Location "EventPhotosFTP"
+
+# Autorizar al usuario 'eventuploader' para Lectura y Escritura
+Add-WebConfiguration -Filter /system.ftpServer/security/authorization -Value @{accessType="Allow"; users="eventuploader"; permissions="Read,Write"} -PSPath IIS:\ -Location "EventPhotosFTP"
+
+# -------------------------------------------------------------------------
+# 4. Configuración de Red
+# -------------------------------------------------------------------------
+# Abrir puerto 21 en el Firewall de Windows Defender
+New-NetFirewallRule -Name "FTP-Port-21" -DisplayName "FTP Server Port 21" -Protocol TCP -LocalPort 21 -Action Allow
+
 
 ## Seguridad
 
